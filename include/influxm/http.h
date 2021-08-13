@@ -16,10 +16,13 @@ typedef struct iovec {
   void *iov_base;
   size_t iov_len;
 } iovec;
+#ifndef writev
+#define writev writev
 influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
   uint64_t r = send(sock, (const char *)iov->iov_base, iov->iov_len, 0);
   return (r < 0 || cnt == 1) ? r : r + writev(sock, iov + 1, cnt - 1);
 }
+#endif
 
 #else
 
@@ -31,14 +34,6 @@ influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
 #include <unistd.h>
 
 #define closesocket close
-#endif
-
-#ifndef influxdb_if_inline
-#define influxdb_if_inline inline
-#endif
-
-#ifndef influx_http_recv
-#define influx_http_recv recv
 #endif
 
 namespace influx_client {
@@ -74,7 +69,7 @@ influxdb_if_inline int http_request_(
       iovec{(void *)("\r\n\r\n"), size_t(4)},
       iovec{(void *)(&body[0]), size_t(content_length)},
   };
-  int r = writev(sock, iv, 5);
+  int r = influx_http_writev(sock, iv, 5);
   if (r < ssize_t(
               iv[0].iov_len + iv[1].iov_len + iv[2].iov_len + iv[3].iov_len +
               iv[4].iov_len)) {

@@ -46,4 +46,16 @@ using to_string_view = std::string_view;
 } // namespace detail
 } // namespace influx_client
 
+#ifndef influxdb_if_inline
+#define influxdb_if_inline inline
+#endif
+
+#ifndef influx_http_recv
+#define influx_http_recv recv
+#endif
+
+#ifndef influx_http_writev
+#define influx_http_writev writev
+#endif
+
 #endif // INFLUXDBM_ALLOC_H
