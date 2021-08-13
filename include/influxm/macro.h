@@ -58,4 +58,6 @@ using to_string_view = std::string_view;
 #define influx_http_writev writev
 #endif
 
+#define macroPAssert(P, T) P<T, void *> _PA = nullptr
+
 #endif // INFLUXDBM_ALLOC_H

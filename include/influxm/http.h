@@ -240,7 +240,7 @@ influxdb_if_inline unsigned char to_hex(unsigned char x) {
 }
 
 influxdb_if_inline void url_encode(std::string &out, const std::string &src) {
-  size_t pos = 0, start = 0;
+  size_t pos, start = 0;
   while (
       (pos = src.find_first_not_of(
            "abcdefghijklmnopqrstuvwxyqABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~",

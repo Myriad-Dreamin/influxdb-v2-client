@@ -43,19 +43,13 @@ struct kv_t {
   std::string v;
   bool q;
   template <typename T>
-  kv_t(
-      detail::string_view k, T v,
-      detail::is_influx_string_t<T, void *> _ = nullptr)
+  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_string_t, T))
       : k(k), v(v), q(true) {}
   template <typename T>
-  kv_t(
-      detail::string_view k, T v,
-      detail::is_influx_boolean_t<T, void *> _ = nullptr)
+  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_boolean_t, T))
       : k(k), v(v ? "true" : "false"), q(false) {}
   template <typename T>
-  kv_t(
-      detail::string_view k, T v,
-      detail::is_influx_integer_t<T, void *> _ = nullptr)
+  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_integer_t, T))
       : k(k), v(std::to_string(v)), q(false) {}
 };
 
@@ -63,7 +57,7 @@ namespace flux {
 struct Client {
   using timestamp_t = uint64_t;
 
-  struct sockaddr_in addr;
+  struct sockaddr_in addr{};
   std::string host;
   std::string bucket;
   std::string organization;
@@ -76,8 +70,8 @@ struct Client {
       detail::string_view host, int port, detail::string_view token,
       detail::string_view org, detail::string_view bucket)
       // detail::string_view precision = "ns"
-      : host(host), port(port), token(token), organization(org),
-        bucket(bucket), precision("ns") {
+      : host(host), port(port), token(token), organization(org), bucket(bucket),
+        precision("ns") {
     reset_network_data();
   }
 
@@ -131,7 +125,7 @@ int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
     macroMemoryPutC(buf, '=', q, bufSize);
     if (v->q) {
       macroMemoryPutC(buf, '"', q, bufSize);
-      size_t pos = 0, start = 0;
+      size_t pos, start = 0;
       while ((pos = v->v.find_first_of('\"', start)) != std::string::npos) {
         macroMemoryCopyN(buf, v->v.c_str() + start, pos - start, q, bufSize);
         macroMemoryPutC(buf, '\\', q, bufSize);
@@ -146,7 +140,7 @@ int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
     }
   }
   return 0;
-};
+}
 
 } // namespace detail
 
@@ -156,7 +150,7 @@ int flux::Client::writeIter(
     F fields_end, timestamp_t t, std::string *resp) {
   macroAllocBuffer(buf, bufSize);
   int64_t q = 0;
-  int code = 0;
+  int code;
   macroMemoryPutStdStr(buf, measurement, q, bufSize);
 
   if (tags_begin != tags_end) {
