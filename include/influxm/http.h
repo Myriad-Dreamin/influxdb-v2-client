@@ -63,7 +63,6 @@ influxdb_if_inline int http_request_(
   int ret_code = 0, pref = pref_header.size(), content_length = body.size();
   int target, rn_co_pos = 0, rn_tr_pos = 0;
   char buf[max_length];
-  bool chunked;
 
   // send data
   std::string content_length_s = std::to_string(content_length);

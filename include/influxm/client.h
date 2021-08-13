@@ -9,12 +9,7 @@
 #include "macro.h"
 #include <cassert>
 #include <chrono>
-#include <cstdint>
-#include <cstdio>
-#include <iterator>
-#include <sstream>
 #include <type_traits>
-#include <utility>
 
 #ifndef influxdb_if_inline
 #define influxdb_if_inline inline
@@ -75,13 +70,13 @@ struct Client {
   std::string token;
   std::string precision;
   std::string write_v2_header;
-  int port_;
+  int port;
 
   Client(
       detail::string_view host, int port, detail::string_view token,
       detail::string_view org, detail::string_view bucket)
       // detail::string_view precision = "ns"
-      : host(host), port_(port), token(token), organization(org),
+      : host(host), port(port), token(token), organization(org),
         bucket(bucket), precision("ns") {
     reset_network_data();
   }
@@ -98,7 +93,7 @@ struct Client {
     write_v2_header.resize(res);
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port_);
+    addr.sin_port = htons(port);
     if ((addr.sin_addr.s_addr = inet_addr(host.c_str())) == INADDR_NONE) {
       abort();
     }
@@ -195,7 +190,6 @@ int flux::Client::writeIter(
   return code;
 }
 
-namespace detail {} // namespace detail
 } // namespace influx_client
 
 #endif // INFLUXDBM_CLIENT_H

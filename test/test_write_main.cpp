@@ -33,7 +33,9 @@ influxdb_if_inline int create_db(
 void construct_test() {
   influx_client::kv_t v_is_string{"k", "v"};
   influx_client::kv_t v_is_string2{"k", std::string("a")};
+#if __cplusplus >= 201700L
   influx_client::kv_t v_is_string3{"k", std::string_view("v")};
+#endif
 
   influx_client::kv_t v_is_bool{"k", true};
   influx_client::kv_t v_is_bool2{"k", false};
