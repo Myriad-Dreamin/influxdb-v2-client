@@ -44,9 +44,7 @@ influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
 namespace influx_client {
 namespace detail {
 
-influxdb_if_inline constexpr uint8_t bit_swap8(uint8_t n) {
-  return n & 0xff;
-}
+influxdb_if_inline constexpr uint8_t bit_swap8(uint8_t n) { return n & 0xff; }
 influxdb_if_inline constexpr uint16_t bit_swap16(uint16_t n) {
   return bit_swap8(n) << 8 | bit_swap8(n >> 8);
 }
@@ -63,8 +61,7 @@ influxdb_if_inline int http_request_(
   static const int max_length = 128;
   ssize_t recv_res = 0;
   int ret_code = 0, pref = pref_header.size(), content_length = body.size();
-  int target, rn_co_pos = 0,
-      rn_tr_pos = 0;
+  int target, rn_co_pos = 0, rn_tr_pos = 0;
   char buf[max_length];
   bool chunked;
 
@@ -72,19 +69,28 @@ influxdb_if_inline int http_request_(
   std::string content_length_s = std::to_string(content_length);
   struct iovec iv[5]{
       iovec{(void *)(&pref_header[0]), size_t(pref)},
-      iovec{(void *)("Content-Length: "), size_t(sizeof("Content-Length: ")-1)},
+      iovec{
+          (void *)("Content-Length: "), size_t(sizeof("Content-Length: ") - 1)},
       iovec{(void *)(&content_length_s[0]), content_length_s.size()},
       iovec{(void *)("\r\n\r\n"), size_t(4)},
       iovec{(void *)(&body[0]), size_t(content_length)},
   };
   int r = writev(sock, iv, 5);
-  if (r < ssize_t(iv[0].iov_len+iv[1].iov_len+iv[2].iov_len+iv[3].iov_len+iv[4].iov_len)) {
+  if (r < ssize_t(
+              iv[0].iov_len + iv[1].iov_len + iv[2].iov_len + iv[3].iov_len +
+              iv[4].iov_len)) {
     return -6;
   }
 
-  // send data
+  uint32_t window4 = 0;
+  int i = 0, j = 0, recv_rest = max_length;
+  auto getOnce = [&] {
+    return (recv_res = influx_http_recv(
+                sock, &buf[0], std::min(max_length, recv_rest), 0)) > 0;
+  };
+
   /**
-   * status:
+   * http message parser status:
    *   0: skip http version
    *   1: get status code
    *   2: walk through header
@@ -92,19 +98,12 @@ influxdb_if_inline int http_request_(
    *   4: get body
    */
   int status = 0;
-  int i = 0, j = 0, recv_rest = max_length;
-  uint32_t window4 = 0;
   if (resp) { // need http response
     resp->clear();
     target = 5;
   } else {
     target = 2;
   }
-
-  auto getOnce = [&] {
-    return (recv_res = influx_http_recv(
-                sock, &buf[0], std::min(max_length, recv_rest), 0)) > 0;
-  };
   while (status != target) {
     if (recv_res == 0 && !getOnce()) {
       break;
