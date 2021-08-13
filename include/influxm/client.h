@@ -9,6 +9,7 @@
 #include "macro.h"
 #include <cassert>
 #include <chrono>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -45,13 +46,19 @@ struct kv_t {
   std::string v;
   bool q;
   template <typename T>
-  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_string_t, T))
+  kv_t(
+      detail::string_view_ref k, T v,
+      macroPAssert(detail::is_influx_string_t, T))
       : k(k), v(v), q(true) {}
   template <typename T>
-  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_boolean_t, T))
+  kv_t(
+      detail::string_view_ref k, T v,
+      macroPAssert(detail::is_influx_boolean_t, T))
       : k(k), v(v ? "true" : "false"), q(false) {}
   template <typename T>
-  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_integer_t, T))
+  kv_t(
+      detail::string_view_ref k, T v,
+      macroPAssert(detail::is_influx_integer_t, T))
       : k(k), v(std::to_string(v)), q(false) {}
 };
 
@@ -97,11 +104,18 @@ struct Client {
 
   template <typename T, typename F>
   int createPoint(
-      detail::string_view_ref measurement, T tags_begin, T tags_end, F fields_begin,
-      F fields_end, char *buf, int bufSize, timestamp_t t = 0);
+      detail::string_view_ref measurement, T tags_begin, T tags_end,
+      F fields_begin, F fields_end, char *buf, int bufSize, timestamp_t t = 0);
 
   int write(detail::string_view_ref point, std::string *resp = nullptr);
   template <typename T> int writes(T points, std::string *resp = nullptr);
+
+  template <typename T, typename F>
+  int writes(
+      std::initializer_list<
+          std::tuple<detail::string_view_ref, T, T, F, F, timestamp_t>>
+          points,
+      char *buf, int bufSize, std::string *resp = nullptr);
   template <typename T> int writeIter(T pb, T pe, std::string *resp = nullptr);
 
   template <typename T, typename F>
@@ -111,8 +125,8 @@ struct Client {
 
 #define macroWriteImpl(T, F)                                                   \
   int write(                                                                   \
-      detail::string_view_ref measurement, T tags, F fields, timestamp_t t = 0,    \
-      std::string *resp = nullptr) {                                           \
+      detail::string_view_ref measurement, T tags, F fields,                   \
+      timestamp_t t = 0, std::string *resp = nullptr) {                        \
     return writeIter(                                                          \
         measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
         t, resp);                                                              \
@@ -126,7 +140,7 @@ struct Client {
 
 #define macroCratePointImpl(T, F)                                              \
   int createPoint(                                                             \
-      detail::string_view_ref measurement, T tags, F fields, char *buf,            \
+      detail::string_view_ref measurement, T tags, F fields, char *buf,        \
       int bufSize, timestamp_t t = 0) {                                        \
     return createPoint(                                                        \
         measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
@@ -138,6 +152,34 @@ struct Client {
   template <typename T> macroCratePointImpl(std::initializer_list<kv_t>, T);
   macroCratePointImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
 #undef macroCratePointImpl
+
+#define macroWritesImpl(T, F)                                                  \
+  int writes(                                                                  \
+      std::initializer_list<                                                   \
+          std::tuple<detail::string_view_t, T, F, timestamp_t>>                \
+          raw_points,                                                          \
+      char *buf, int bufSize, std::string *resp = nullptr) {                   \
+    int code, offset = 0;                                                      \
+    point_vec Vec;                                                             \
+    for (auto &p : raw_points) {                                               \
+      code = createPoint(                                                      \
+          std::get<0>(p), std::get<1>(p).begin(), std::get<1>(p).end(),        \
+          std::get<2>(p).begin(), std::get<2>(p).end(), buf + offset,          \
+          bufSize - offset, std::get<3>(p));                                   \
+      if (code < 0) {                                                          \
+        return code;                                                           \
+      }                                                                        \
+      Vec.emplace_back(buf + offset, code);                                    \
+      offset += code;                                                          \
+    }                                                                          \
+    return writes(Vec, resp);                                                  \
+  }
+
+  template <typename T, typename F> macroWritesImpl(T, F);
+  template <typename T> macroWritesImpl(T, std::initializer_list<kv_t>);
+  template <typename T> macroWritesImpl(std::initializer_list<kv_t>, T);
+  macroWritesImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
+#undef macroWritesImpl
 };
 } // namespace flux
 
@@ -176,8 +218,9 @@ int flux::Client::write(detail::string_view_ref point, std::string *resp) {
 
 template <typename T, typename F>
 int flux::Client::createPoint(
-    detail::string_view_ref measurement, T tags_begin, T tags_end, F fields_begin,
-    F fields_end, char *buf, int bufSize, flux::Client::timestamp_t t) {
+    detail::string_view_ref measurement, T tags_begin, T tags_end,
+    F fields_begin, F fields_end, char *buf, int bufSize,
+    flux::Client::timestamp_t t) {
   int64_t q = 0;
   int code;
   macroMemoryPutStdStr(buf, measurement, q, bufSize);
@@ -258,6 +301,26 @@ int flux::Client::writeIter(T pb, T pe, std::string *resp) {
       sock, write_v2_header, &Iov[0], Iov.size(), body_size, resp);
   closesocket(sock);
   return ret;
+}
+template <typename T, typename F>
+int flux::Client::writes(
+    std::initializer_list<
+        std::tuple<detail::string_view_ref, T, T, F, F, timestamp_t>>
+        points,
+    char *buf, int bufSize, std::string *resp) {
+  int code, offset = 0;
+  point_vec Vec;
+  for (auto p : points) {
+    code = createPoint(
+        std::get<0>(p), std::get<1>(p), std::get<2>(p), std::get<3>(p),
+        std::get<4>(p), buf + offset, bufSize - offset, std::get<5>(p));
+    if (code < 0) {
+      return code;
+    }
+    Vec.emplace_back(points + offset, code);
+    offset += code;
+  }
+  return writes(Vec, resp);
 }
 
 } // namespace influx_client

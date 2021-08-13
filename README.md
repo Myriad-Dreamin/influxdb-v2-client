@@ -43,6 +43,36 @@ void example1() {
 
 ```
 
+### batch request with `initializer_list` type
+
+```c++
+
+void example_batch_1() {
+  Client client;
+  char points[4096];
+  int pointsSize = 4096, offset = 0;
+
+  code = client.writes(
+      {
+          {
+              "metrics_1",
+              {{"tag1", 1}, {"tag2", 0}},
+              {{"field1", "value3"}, {"field2", "value4"}},
+              0,
+          },
+          {
+              "metrics_2",
+              {{"tag2", 1}, {"tag3", 0}},
+              {{"field4", "value3"}, {"field5", "value4"}},
+              0,
+          },
+      },
+      points, pointsSize);
+  ASSERT_TRUE(code == 204);
+}
+
+```
+
 ### request with `vector` type
 
 ```c++
@@ -56,6 +86,36 @@ void example2() {
   
   std::vector<influx_client::kv_t> fields = tags;
   code = client.write("metrics", tags, fields);
+  ASSERT_TRUE(code == 204);
+}
+```
+
+### batch request with `vector` type
+
+```c++
+
+void example_batch_2() {
+  Client client;
+  char points[4096];
+  int pointsSize = 4096, offset = 0;
+  influx_client::point_vec Vec;
+
+  code = client.createPoint(
+      "metrics_xx", tags, {{"field1", "value3"}}, points, pointsSize);
+  ASSERT_TRUE(code >= 0);
+  Vec.emplace_back(points + offset, code);
+  offset += code;
+
+  code = client.writes(Vec, &q);
+  ASSERT_TRUE(code == 204);
+
+  code = client.createPoint(
+      "metrics_xx", tags, {{"field1", "value3"}}, points + offset,
+      pointsSize - offset);
+  ASSERT_TRUE(code >= 0);
+  Vec.emplace_back(points + offset, code);
+
+  code = client.writes(Vec, &q);
   ASSERT_TRUE(code == 204);
 }
 ```
