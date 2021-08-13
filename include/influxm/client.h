@@ -67,14 +67,14 @@ namespace flux {
 struct Client {
   using timestamp_t = uint64_t;
 
+  struct sockaddr_in addr;
   std::string host;
   std::string bucket;
   std::string organization;
   std::string token;
   std::string precision;
-  int port_;
   std::string write_v2_header;
-  struct sockaddr_in addr;
+  int port_;
 
   Client(
       detail::string_view host, int port, detail::string_view token,
