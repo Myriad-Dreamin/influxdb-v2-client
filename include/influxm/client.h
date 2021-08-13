@@ -10,6 +10,7 @@
 #include <cassert>
 #include <chrono>
 #include <type_traits>
+#include <vector>
 
 #ifndef influxdb_if_inline
 #define influxdb_if_inline inline
@@ -57,7 +58,7 @@ namespace flux {
 struct Client {
   using timestamp_t = uint64_t;
 
-  struct sockaddr_in addr{};
+  struct sockaddr_in addr {};
   std::string host;
   std::string bucket;
   std::string organization;
@@ -94,9 +95,18 @@ struct Client {
   }
 
   template <typename T, typename F>
-  int writeIter(
+  int createPoint(
       detail::string_view measurement, T tags_begin, T tags_end, F fields_begin,
-      F fields_end, timestamp_t t = 0, std::string *resp = nullptr);
+      F fields_end, char *buf, int bufSize, timestamp_t t = 0);
+
+  int write(detail::string_view point, std::string *resp = nullptr);
+  template <typename T> int writes(T points, std::string *resp = nullptr);
+  template <typename T> int writeIter(T pb, T pe, std::string *resp = nullptr);
+
+  template <typename T, typename F>
+  int writeIter(
+      detail::string_view measurement, T tb, T te, F fb, F fe,
+      timestamp_t t = 0, std::string *resp = nullptr);
 
 #define macroWriteImpl(T, F)                                                   \
   int write(                                                                   \
@@ -112,6 +122,21 @@ struct Client {
   template <typename T> macroWriteImpl(std::initializer_list<kv_t>, T);
   macroWriteImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
 #undef macroWriteImpl
+
+#define macroCratePointImpl(T, F)                                              \
+  int createPoint(                                                             \
+      detail::string_view measurement, T tags, F fields, char *buf,            \
+      int bufSize, timestamp_t t = 0) {                                        \
+    return createPoint(                                                        \
+        measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
+        buf, bufSize, t);                                                      \
+  }
+
+  template <typename T, typename F> macroCratePointImpl(T, F);
+  template <typename T> macroCratePointImpl(T, std::initializer_list<kv_t>);
+  template <typename T> macroCratePointImpl(std::initializer_list<kv_t>, T);
+  macroCratePointImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
+#undef macroCratePointImpl
 };
 } // namespace flux
 
@@ -144,11 +169,14 @@ int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
 
 } // namespace detail
 
+int flux::Client::write(detail::string_view point, std::string *resp) {
+  return detail::http_request(&addr, write_v2_header, point, resp);
+}
+
 template <typename T, typename F>
-int flux::Client::writeIter(
+int flux::Client::createPoint(
     detail::string_view measurement, T tags_begin, T tags_end, F fields_begin,
-    F fields_end, timestamp_t t, std::string *resp) {
-  macroAllocBuffer(buf, bufSize);
+    F fields_end, char *buf, int bufSize, flux::Client::timestamp_t t) {
   int64_t q = 0;
   int code;
   macroMemoryPutStdStr(buf, measurement, q, bufSize);
@@ -178,10 +206,55 @@ int flux::Client::writeIter(
   }
   std::string ts = std::to_string(t);
   macroMemoryPutStdStr(buf, ts, q, bufSize);
+  return q;
+}
+template <typename T> int flux::Client::writes(T points, std::string *resp) {
+  return writeIter(points.begin(), points.end(), resp);
+}
+
+template <typename T, typename F>
+int flux::Client::writeIter(
+    detail::string_view measurement, T tb, T te, F fb, F fe, timestamp_t t,
+    std::string *resp) {
+  macroAllocBuffer(buf, bufSize);
+  int code = createPoint(measurement, tb, te, fb, fe, buf, bufSize, t);
+  if (code < 0) {
+    return code;
+  }
   code = detail::http_request(
-      &addr, write_v2_header, detail::to_string_view(buf, q), resp);
+      &addr, write_v2_header, detail::to_string_view(buf, code), resp);
   macroFreeBuffer(buf, bufSize);
   return code;
+}
+
+template <typename T>
+int flux::Client::writeIter(T pb, T pe, std::string *resp) {
+  int sock = detail::create_socket(&addr);
+  if (sock < 0) {
+    return sock;
+  }
+  std::vector<iovec> Iov;
+  Iov.resize(4);
+  int body_size = 0;
+  for (auto p = pb; p != pe; p++) {
+    if (p.size() > 65535) {
+      return -1;
+    }
+    if (body_size) {
+      Iov.emplace_back("\n", 1);
+      body_size++;
+    }
+    Iov.emplace_back(static_cast<void *>(&(*p)[0]), p.size());
+    body_size += p.size();
+    if (body_size > 65535) {
+      return -1;
+    }
+  }
+
+  int ret = detail::http_request_v_(
+      sock, write_v2_header, &Iov[0], Iov.size(), body_size, resp);
+  closesocket(sock);
+  return ret;
 }
 
 } // namespace influx_client

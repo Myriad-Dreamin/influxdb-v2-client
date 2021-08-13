@@ -47,32 +47,32 @@ influxdb_if_inline constexpr uint32_t bit_swap32(uint32_t n) {
   return bit_swap16(n) << 16 | bit_swap16(n >> 16);
 }
 
-influxdb_if_inline int http_request_(
-    int sock, string_view pref_header, string_view body, std::string *resp) {
+static inline constexpr int http_iv_reserve = 4;
+influxdb_if_inline int http_request_v_(
+    int sock, string_view pref_header, struct iovec *iv, int iv_length, int body_size, std::string *resp) {
   static const uint32_t rn = uint32_t('\r') << 8 | uint32_t('\n');
   static const uint32_t rn_rn = rn << 16 | rn;
   static const uint32_t rn_co = rn << 16 | uint32_t('C') << 8 | uint32_t('o');
   static const uint32_t rn_tr = rn << 16 | uint32_t('T') << 8 | uint32_t('r');
   static const int max_length = 128;
   ssize_t recv_res = 0;
-  int ret_code = 0, pref = pref_header.size(), content_length = body.size();
+  int ret_code = 0, pref = pref_header.size(), content_length = body_size;
   int target, rn_co_pos = 0, rn_tr_pos = 0;
   char buf[max_length];
 
   // send data
   std::string content_length_s = std::to_string(content_length);
-  struct iovec iv[5]{
-      iovec{(void *)(&pref_header[0]), size_t(pref)},
-      iovec{
-          (void *)("Content-Length: "), size_t(sizeof("Content-Length: ") - 1)},
-      iovec{(void *)(&content_length_s[0]), content_length_s.size()},
-      iovec{(void *)("\r\n\r\n"), size_t(4)},
-      iovec{(void *)(&body[0]), size_t(content_length)},
-  };
-  int r = influx_http_writev(sock, iv, 5);
+  iv[0].iov_base = (void *)(&pref_header[0]);
+  iv[0].iov_len = size_t(pref);
+  iv[1].iov_base = (void *)("Content-Length: ");
+  iv[1].iov_len = size_t(sizeof("Content-Length: ") - 1);
+  iv[2].iov_base = (void *)(&content_length_s[0]);
+  iv[2].iov_len = content_length_s.size();
+  iv[3].iov_base = (void *)("\r\n\r\n");
+  iv[3].iov_len = size_t(4);
+  int r = influx_http_writev(sock, iv, iv_length);
   if (r < ssize_t(
-              iv[0].iov_len + iv[1].iov_len + iv[2].iov_len + iv[3].iov_len +
-              iv[4].iov_len)) {
+              iv[0].iov_len + iv[1].iov_len + iv[2].iov_len + iv[3].iov_len + body_size)) {
     return -6;
   }
 
@@ -218,9 +218,15 @@ influxdb_if_inline int http_request_(
   return recv_res < 0 ? int(recv_res) : ret_code;
 }
 
-influxdb_if_inline int http_request(
-    const struct sockaddr_in *addr, string_view pref_header, string_view body,
-    std::string *resp) {
+influxdb_if_inline int http_request_(
+    int sock, string_view pref_header, string_view body, std::string *resp) {
+  struct iovec iv[1+http_iv_reserve]{};
+  iv[4].iov_len = body.size();
+  iv[4].iov_base = (void*)&body[0];
+  return http_request_v_(sock, pref_header, iv, 5, body.size(), resp);
+}
+
+influxdb_if_inline int create_socket(const struct sockaddr_in *addr) {
   int sock;
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     return -2;
@@ -229,7 +235,16 @@ influxdb_if_inline int http_request(
     closesocket(sock);
     return -3;
   }
+  return sock;
+}
 
+influxdb_if_inline int http_request(
+    const struct sockaddr_in *addr, string_view pref_header, string_view body,
+    std::string *resp) {
+  int sock = create_socket(addr);
+  if (sock < 0) {
+    return sock;
+  }
   int ret = http_request_(sock, pref_header, body, resp);
   closesocket(sock);
   return ret;
