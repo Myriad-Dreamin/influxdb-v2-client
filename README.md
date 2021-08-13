@@ -100,7 +100,7 @@ void example4() {
   influx_client::kv_t v_is_double{"k", 0.};
   influx_client::kv_t v_is_double2{"k", double(0)};
   influx_client::kv_t v_is_double3{"k", double(0.1)};
-  influx_client::kv_t v_is_double4 { "k", float(0.1) } 0
+  influx_client::kv_t v_is_double4{"k", float(0.1)};
 }
 
 ```
