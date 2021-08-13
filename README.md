@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 
 ```
 
-### invoke with `initializer_list` type
+### request with `initializer_list` type
 
 ```c++
 void example1() {
@@ -43,7 +43,7 @@ void example1() {
 
 ```
 
-### invoke with `vector` type
+### request with `vector` type
 
 ```c++
 void example2() {
@@ -60,10 +60,10 @@ void example2() {
 }
 ```
 
-### invoke with `iterator` type
+### request with `iterator` type
 
 ```c++
-void example2() {
+void example3() {
   Client client;
   std::vector<influx_client::kv_t> tags;
   tags.emplace_back("tag1", 1);
@@ -82,7 +82,7 @@ void example2() {
 
 ```c++
 
-void example2() {
+void example4() {
 
   influx_client::kv_t v_is_string{"k", "v"};
   influx_client::kv_t v_is_string2{"k", std::string("a")};
@@ -100,7 +100,7 @@ void example2() {
   influx_client::kv_t v_is_double{"k", 0.};
   influx_client::kv_t v_is_double2{"k", double(0)};
   influx_client::kv_t v_is_double3{"k", double(0.1)};
-  influx_client::kv_t v_is_double4 { "k", float(0.1) }
+  influx_client::kv_t v_is_double4 { "k", float(0.1) } 0
 }
 
 ```
@@ -108,7 +108,7 @@ void example2() {
 ### Error Handling
 
 ```c++
-void example2() {
+void example5() {
   Client client;
 
   code = client.write(a, {}, {{"field", "value"}});
@@ -118,4 +118,30 @@ void example2() {
 }
 ```
 
+### request with timestamp
 
+```c++
+void example6() {
+  Client client;
+
+  std::string hb;
+  code = client.write(
+      a, {}, {{"field", "value"}},
+      /* nanoseconds since epoch */ 123456789123456ULL, &hb);
+}
+```
+
+### Get response header and body
+
+```c++
+void example7() {
+  Client client;
+
+  std::string hb;
+  code = client.write(a, {}, {{"field", "value"}}, 0, &hb);
+  if ((code / 100) == 2) {
+      using namespace myriad_dreamin::string_algorithm;
+      std::string [header, body] = split(hb, "\r\n\r\n");
+  }
+}
+```
