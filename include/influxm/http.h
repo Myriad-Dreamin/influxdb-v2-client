@@ -60,28 +60,25 @@ influxdb_if_inline int http_request_(
   static const uint32_t rn_rn = rn << 16 | rn;
   static const uint32_t rn_co = rn << 16 | uint32_t('C') << 8 | uint32_t('o');
   static const uint32_t rn_tr = rn << 16 | uint32_t('T') << 8 | uint32_t('r');
-
+  static const int max_length = 128;
   ssize_t recv_res = 0;
   int ret_code = 0, pref = pref_header.size(), content_length = body.size();
-  int max_length = std::max<std::size_t>(pref + 32, 128), target, rn_co_pos = 0,
+  int target, rn_co_pos = 0,
       rn_tr_pos = 0;
   char buf[max_length];
   bool chunked;
 
-  // construct header, body
-  memcpy(buf, pref_header.data(), pref);
-  macroMemoryPutConst(buf, "Content-Length: ", pref, max_length);
-  std::string content_length_s = std::to_string(content_length);
-  macroMemoryPutStdStr(buf, content_length_s, pref, max_length);
-  macroMemoryPutConst(buf, "\r\n\r\n", pref, max_length);
-
   // send data
-  struct iovec iv[2]{
-      iovec{(void *)(&buf[0]), size_t(pref)},
+  std::string content_length_s = std::to_string(content_length);
+  struct iovec iv[5]{
+      iovec{(void *)(&pref_header[0]), size_t(pref)},
+      iovec{(void *)("Content-Length: "), size_t(sizeof("Content-Length: ")-1)},
+      iovec{(void *)(&content_length_s[0]), content_length_s.size()},
+      iovec{(void *)("\r\n\r\n"), size_t(4)},
       iovec{(void *)(&body[0]), size_t(content_length)},
   };
-  int r = writev(sock, iv, 2);
-  if (r < ssize_t(iv[0].iov_len + iv[1].iov_len)) {
+  int r = writev(sock, iv, 5);
+  if (r < ssize_t(iv[0].iov_len+iv[1].iov_len+iv[2].iov_len+iv[3].iov_len+iv[4].iov_len)) {
     return -6;
   }
 
@@ -132,7 +129,7 @@ influxdb_if_inline int http_request_(
         } else {
           status = 2;
           if (resp) {
-            resp->append(buf, i, recv_res - i);
+            resp->append(buf + i, recv_res - i);
             i = 0;
             goto status2;
           }
@@ -143,7 +140,7 @@ influxdb_if_inline int http_request_(
       recv_res = 0;
       break;
     case 2:
-      resp->append(buf, 0, recv_res);
+      resp->append(buf, recv_res);
     status2:
       while (i < resp->size()) {
         window4 = (window4 << 8) + (*resp)[i++];
@@ -217,7 +214,7 @@ influxdb_if_inline int http_request_(
       if (recv_rest < recv_res) {
         abort();
       }
-      resp->append(buf, 0, recv_res);
+      resp->append(buf, recv_res);
       recv_rest -= recv_res;
       if (recv_rest == 0) {
         status = 0;
