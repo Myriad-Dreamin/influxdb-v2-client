@@ -28,7 +28,8 @@ using field = kv_t;
 namespace detail {
 template <typename T, typename X = void>
 using is_influx_string_t = typename std::enable_if<
-    std::is_same<T, detail::string_view>::value || std::is_same<T, std::string>::value ||
+    std::is_same<T, detail::string_view>::value ||
+        std::is_same<T, std::string>::value ||
         std::is_same<const char *, T>::value || std::is_same<char *, T>::value,
     X>::type;
 
@@ -107,43 +108,27 @@ struct Client {
   int writeIter(
       detail::string_view measurement, T tags_begin, T tags_end, F fields_begin,
       F fields_end, timestamp_t t = 0, std::string *resp = nullptr);
-  template <typename T, typename F>
-  int write(
-      detail::string_view measurement, T tags, F fields, timestamp_t t = 0,
-      std::string *resp = nullptr);
-  template <typename T>
-  int write(
-      detail::string_view measurement, std::initializer_list<kv_t> tags,
-      T fields, timestamp_t t = 0, std::string *resp = nullptr);
-  template <typename T>
-  int write(
-      detail::string_view measurement, T tags,
-      std::initializer_list<kv_t> fields, timestamp_t t = 0,
-      std::string *resp = nullptr);
-  int write(
-      detail::string_view measurement, std::initializer_list<kv_t> tags,
-      std::initializer_list<kv_t> fields, timestamp_t t = 0,
-      std::string *resp = nullptr);
-};
-} // namespace flux
 
 #define macroWriteImpl(T, F)                                                   \
-  int flux::Client::write(                                                     \
-      detail::string_view measurement, T tags, F fields, timestamp_t t,        \
-      std::string *resp) {                                                     \
+  int write(                                                                   \
+      detail::string_view measurement, T tags, F fields, timestamp_t t = 0,    \
+      std::string *resp = nullptr) {                                           \
     return writeIter(                                                          \
         measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
         t, resp);                                                              \
   }
-template <typename T, typename F> macroWriteImpl(T, F);
-template <typename T> macroWriteImpl(T, std::initializer_list<kv_t>);
-template <typename T> macroWriteImpl(std::initializer_list<kv_t>, T);
-macroWriteImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
+
+  template <typename T, typename F> macroWriteImpl(T, F);
+  template <typename T> macroWriteImpl(T, std::initializer_list<kv_t>);
+  template <typename T> macroWriteImpl(std::initializer_list<kv_t>, T);
+  macroWriteImpl(std::initializer_list<kv_t>, std::initializer_list<kv_t>);
 #undef macroWriteImpl
+};
+} // namespace flux
 
 namespace detail {
 
-template<typename B, typename T>
+template <typename B, typename T>
 int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
   for (auto v = b; v != e; v++) {
     macroMemoryPutC(buf, ',', q, bufSize);
@@ -168,7 +153,7 @@ int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
   return 0;
 };
 
-}
+} // namespace detail
 
 template <typename T, typename F>
 int flux::Client::writeIter(
