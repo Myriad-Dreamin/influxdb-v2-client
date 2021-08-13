@@ -5,12 +5,11 @@
 #ifndef INFLUXDBM_HTTP_H
 #define INFLUXDBM_HTTP_H
 
-#include "alloc.h"
-#include <string>
+#include "macro.h"
+#include <algorithm>
 
 #ifdef _WIN32
 #define NOMINMAX
-#include <algorithm>
 #include <windows.h>
 #pragma comment(lib, "ws2_32")
 typedef struct iovec {
@@ -42,11 +41,11 @@ influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
 #define influx_http_recv recv
 #endif
 
-namespace influx_client::detail {
+namespace influx_client {
+namespace detail {
 
 influxdb_if_inline int http_request_(
-    int sock, std::string_view pref_header, std::string_view body,
-    std::string *resp) {
+    int sock, string_view pref_header, string_view body, std::string *resp) {
   static const uint32_t rn = uint32_t('\r') << 8 | uint32_t('\n');
   static const uint32_t rn_rn = rn << 16 | rn;
   static const uint32_t rn_co = rn << 16 | uint32_t('C') << 8 | uint32_t('o');
@@ -54,9 +53,10 @@ influxdb_if_inline int http_request_(
 
   ssize_t recv_res = 0;
   int ret_code = 0, pref = pref_header.size(), content_length = body.size();
-  int max_length = std::max<std::size_t>(pref + 32, 128), target;
+  int max_length = std::max<std::size_t>(pref + 32, 128), target, rn_co_pos = 0,
+      rn_tr_pos = 0;
   char buf[max_length];
-  bool chunked, has_rn_co, has_rn_tr;
+  bool chunked;
 
   // construct header, body
   memcpy(buf, pref_header.data(), pref);
@@ -84,7 +84,8 @@ influxdb_if_inline int http_request_(
    *   3: parse header
    *   4: get body
    */
-  int status = 0, i = 0;
+  int status = 0;
+  int i = 0, j = 0, recv_rest = max_length;
   uint32_t window4 = 0;
   if (resp) { // need http response
     resp->clear();
@@ -94,7 +95,7 @@ influxdb_if_inline int http_request_(
   }
 
   auto getOnce = [&] {
-    return (recv_res = influx_http_recv(sock, &buf[0], max_length, 0)) > 0;
+    return (recv_res = influx_http_recv(sock, &buf[0], std::min(max_length, recv_rest), 0)) > 0;
   };
   while (status != target) {
     if (recv_res == 0 && !getOnce()) {
@@ -114,7 +115,7 @@ influxdb_if_inline int http_request_(
       break;
     case 1:
       for (i = 0; i < recv_res; i++) {
-        status1:
+      status1:
         if (std::isdigit(buf[i])) {
           ret_code = ret_code * 10 + buf[i] - '0';
         } else {
@@ -141,30 +142,75 @@ influxdb_if_inline int http_request_(
           pref = i;
           goto status3;
         case rn_co:
-          has_rn_co = true;
+          *(int32_t*)(&(*resp)[i-4]) = rn_co_pos;
+          rn_co_pos = i;
           break;
         case rn_tr:
-          has_rn_tr = true;
+          *(int32_t*)(&(*resp)[i-4]) = rn_tr_pos;
+          rn_tr_pos = i;
           break;
         default:
           break;
         }
       }
+      recv_res = 0;
+      break;
     case 3:
-    status3:
+    status3: {
+      const char* resp_addr = resp->c_str();
+      auto clearChain = [&resp_addr](int i, uint32_t val) {
+        val = htonl(val);
+        while(i) {
+          auto pos = (int32_t*)&resp_addr[i-4];
+          i = *pos;
+          *pos = val;
+        }
+      };
       if (ret_code == 204) {
         status = 5;
       } else {
-
-        (*resp)[pref - 2] = 0;
-        (*resp)[pref - 1] = 0;
-        printf("%s\n", resp->c_str());
-        if (has_rn_co) {
-          int col_pos = resp->find("Content-Length", 0, pref);
-        } else if (has_rn_tr) {
-          int col_pos = resp->find("Transfer-Encoding", 0, pref);
+        content_length = 0;
+        i = rn_co_pos;
+        while(i) {
+          if (macroConstStrCmpN(resp_addr + i, "ntent-Length: ") == 0) {
+            j = i + int(sizeof ("ntent-Length: ")) - 1;
+            while(isdigit(resp_addr[j])) {
+              content_length = content_length * 10 + resp_addr[j++] - '0';
+            }
+          }
+          auto pos = (int32_t*)&resp_addr[i-4];
+          i = *pos;
         }
-        status = 5;
+        i = rn_tr_pos;
+        while(i) {
+          printf("%d\n", i);
+          auto pos = (int32_t*)&resp_addr[i-4];
+          i = *pos;
+          abort();
+        }
+        if (content_length) {
+          recv_rest = content_length - int(resp->size()) + pref;
+          status = recv_rest ? 4 : 5;
+        } else {
+          status = 5;
+        }
+      }
+      clearChain(rn_co_pos, rn_co);
+      clearChain(rn_tr_pos, rn_tr);
+      (*resp)[pref - 2] = 0;
+      (*resp)[pref - 1] = 0;
+      printf("%s\n", resp_addr);
+      recv_res = 0;
+      break;
+    }
+    case 4:
+      if (recv_rest < recv_res) {
+        abort();
+      }
+      resp->append(buf, 0, recv_res);
+      recv_rest -= recv_res;
+      if (recv_rest == 0) {
+        status = 0;
       }
       break;
     }
@@ -173,8 +219,8 @@ influxdb_if_inline int http_request_(
 }
 
 influxdb_if_inline int http_request(
-    const struct sockaddr_in *addr, std::string_view pref_header,
-    std::string_view body, std::string *resp) {
+    const struct sockaddr_in *addr, string_view pref_header, string_view body,
+    std::string *resp) {
   int sock;
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     return -2;
@@ -197,8 +243,8 @@ influxdb_if_inline void url_encode(std::string &out, const std::string &src) {
   size_t pos = 0, start = 0;
   while (
       (pos = src.find_first_not_of(
-          "abcdefghijklmnopqrstuvwxyqABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~",
-          start)) != std::string::npos) {
+           "abcdefghijklmnopqrstuvwxyqABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~",
+           start)) != std::string::npos) {
     out.append(src.c_str() + start, pos - start);
     if (src[pos] == ' ')
       out += "+";
@@ -212,6 +258,7 @@ influxdb_if_inline void url_encode(std::string &out, const std::string &src) {
   out.append(src.c_str() + start, src.length() - start);
 }
 
-} // namespace influx_client::detail
+} // namespace detail
+} // namespace influx_client
 
 #endif // INFLUXDBM_HTTP_H

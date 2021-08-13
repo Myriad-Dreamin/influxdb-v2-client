@@ -1,6 +1,7 @@
 #include <influxm/client.h>
 #include <vector>
 
+// todo
 namespace influx_client {
 
 influxdb_if_inline int
@@ -29,17 +30,19 @@ influxdb_if_inline int create_db(
     }                                                                          \
   } while (0)
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   using namespace influx_client::flux;
   if (argc != 3) {
     return 1;
   }
 
   Client client(
-      "127.0.0.1", int(std::strtol(argv[1], nullptr, 10)), argv[2], "kfuzz", "test");
+      "127.0.0.1", int(std::strtol(argv[1], nullptr, 10)), argv[2], "kfuzz",
+      "test");
 
   int code = client.write(
-      "metrics_x", {{"tag1", "value1"}, {"tag2", "value2"}},
+      "metrics_x",
+      std::vector<influx_client::tag>{influx_client::tag{"tag1", "value1"}, influx_client::tag{"tag2", "value2"}},
       {{"field1", 0}, {"field2", 0}});
 
   ASSERT_TRUE(code == 204);
@@ -73,6 +76,17 @@ int main(int argc, char** argv) {
   code = client.write(a, tags, {{"field1", "value3"}}, 0, &q);
 
   ASSERT_TRUE(code == 204);
+
+  client.token = "123456";
+  client.reset_network_data();
+
+  code = client.write(a, tags, {{"field1", "value3"}}, 0);
+
+  ASSERT_TRUE(code == 0 || code == 401);
+
+  code = client.write(a, tags, {{"field1", "value3"}}, 0, &q);
+
+  ASSERT_TRUE(code == 0  || code == 401);
 
   return 0;
 }

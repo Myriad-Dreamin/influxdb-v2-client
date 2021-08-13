@@ -6,6 +6,8 @@
 #define INFLUXDBM_ALLOC_H
 
 #include <cstring>
+#include <string>
+
 #define macroAllocBuffer(name, size)                                           \
   char name[4096];                                                             \
   const int size = 4096
@@ -28,5 +30,20 @@
     current_size++;                                                            \
   } while (0)
 #define macroFreeBuffer(name, size) (void *)(0)
+#define macroConstStrCmpN(target, prefix) \
+  strncmp(target, prefix, sizeof(prefix)-1)
+
+namespace influx_client { // NOLINT(modernize-concat-nested-namespaces)
+namespace detail {
+#if __cplusplus < 201700L
+using string_view = const std::string &;
+using to_string_view = std::string;
+#else
+#include <string_view>
+using string_view = std::string_view;
+using to_string_view = std::string_view;
+#endif
+} // namespace detail
+} // namespace influx_client
 
 #endif // INFLUXDBM_ALLOC_H
