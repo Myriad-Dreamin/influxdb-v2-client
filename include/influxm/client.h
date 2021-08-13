@@ -28,7 +28,7 @@ using field = kv_t;
 namespace detail {
 template <typename T, typename X = void>
 using is_influx_string_t = typename std::enable_if<
-    std::is_same<T, detail::string_view>::value ||
+    std::is_same<T, detail::string_view>::value || std::is_same<T, std::string>::value ||
         std::is_same<const char *, T>::value || std::is_same<char *, T>::value,
     X>::type;
 

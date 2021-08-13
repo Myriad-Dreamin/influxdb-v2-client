@@ -1,0 +1,121 @@
+
+# influxdb-v2-client
+
+C++11 header only influxdb client (for `api/v2/write`. If you need send write request to `/write`, please use [influxdb-cpp](https://github.com/orca-zhang/influxdb-cpp)).
+
+## Use with CMake
+
+```cmake
+add_subdirectory(${repo})
+target_link_libraries(your_target PUBLIC ${repo})
+```
+
+## Example
+
+```c++
+#include <influxm/client.h>
+#include <vector>
+int main(int argc, char **argv) {
+  using namespace influx_client::flux;
+
+  Client client(
+      "127.0.0.1", /* port */ 12345, /* token */
+      "xxxxxxxxke37mh-yniv5yxyyyy_5uspn-mnzzzz7g1u87babiyh-he_az"
+      "-aaaapov11112lj2-ovr5bbbbso6q==",
+      "organization", "bucket");
+  
+  /* do something with client */
+}
+
+```
+
+### invoke with `initializer_list` type
+
+```c++
+void example1() {
+  Client client;
+  code = client.write(
+      "metrics_1", {{"tag1", "value1"}, {"tag2", "value2"}},
+      {{"field1", "value3"}, {"field2", "value4"}});
+
+  ASSERT_TRUE(code == 204);
+}
+
+```
+
+### invoke with `vector` type
+
+```c++
+void example2() {
+  Client client;
+  std::vector<influx_client::kv_t> tags;
+  tags.emplace_back("tag1", 1);
+
+  code = client.write("metrics", tags, {{"field1", "value3"}});
+  ASSERT_TRUE(code == 204);
+  
+  std::vector<influx_client::kv_t> fields = tags;
+  code = client.write("metrics", tags, fields);
+  ASSERT_TRUE(code == 204);
+}
+```
+
+### invoke with `iterator` type
+
+```c++
+void example2() {
+  Client client;
+  std::vector<influx_client::kv_t> tags;
+  tags.emplace_back("tag1", 1);
+
+  code = client.write("metrics", tags, {{"field1", "value3"}});
+  ASSERT_TRUE(code == 204);
+  
+  std::vector<influx_client::kv_t> fields;
+  fields.emplace_back("field1", 1);
+  code = client.write(
+      "metrics", tags.begin(), tags.end(), fields.begin(), fields.end());
+}
+```
+
+### construct `kv_t`
+
+```c++
+
+void example2() {
+
+  influx_client::kv_t v_is_string{"k", "v"};
+  influx_client::kv_t v_is_string2{"k", std::string("a")};
+  influx_client::kv_t v_is_string3{"k", std::string_view("v")};
+
+  influx_client::kv_t v_is_bool{"k", true};
+  influx_client::kv_t v_is_bool2{"k", false};
+
+  influx_client::kv_t v_is_integer{"k", 0};
+  influx_client::kv_t v_is_integer2{"k", uint8_t(0)};
+  influx_client::kv_t v_is_integer3{"k", uint64_t(0)};
+  influx_client::kv_t v_is_integer4{"k", int32_t(0)};
+  influx_client::kv_t v_is_integer5{"k", int(0)};
+
+  influx_client::kv_t v_is_double{"k", 0.};
+  influx_client::kv_t v_is_double2{"k", double(0)};
+  influx_client::kv_t v_is_double3{"k", double(0.1)};
+  influx_client::kv_t v_is_double4 { "k", float(0.1) }
+}
+
+```
+
+### Error Handling
+
+```c++
+void example2() {
+  Client client;
+
+  code = client.write(a, {}, {{"field", "value"}});
+  if (code < 0 || (code / 100) != 2) {
+      /* error handling */
+  }
+}
+```
+
+

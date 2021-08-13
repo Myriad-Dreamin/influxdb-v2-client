@@ -30,6 +30,26 @@ influxdb_if_inline int create_db(
     }                                                                          \
   } while (0)
 
+void construct_test() {
+  influx_client::kv_t v_is_string{"k", "v"};
+  influx_client::kv_t v_is_string2{"k", std::string("a")};
+  influx_client::kv_t v_is_string3{"k", std::string_view("v")};
+
+  influx_client::kv_t v_is_bool{"k", true};
+  influx_client::kv_t v_is_bool2{"k", false};
+
+  influx_client::kv_t v_is_integer{"k", 0};
+  influx_client::kv_t v_is_integer2{"k", uint8_t(0)};
+  influx_client::kv_t v_is_integer3{"k", uint64_t(0)};
+  influx_client::kv_t v_is_integer4{"k", int32_t(0)};
+  influx_client::kv_t v_is_integer5{"k", int(0)};
+
+  influx_client::kv_t v_is_double{"k", 0.};
+  influx_client::kv_t v_is_double2{"k", double(0)};
+  influx_client::kv_t v_is_double3{"k", double(0.1)};
+  influx_client::kv_t v_is_double4{"k", float(0.1)};
+}
+
 int main(int argc, char **argv) {
   using namespace influx_client::flux;
   if (argc != 3) {
@@ -42,7 +62,9 @@ int main(int argc, char **argv) {
 
   int code = client.write(
       "metrics_x",
-      std::vector<influx_client::tag>{influx_client::tag{"tag1", "value1"}, influx_client::tag{"tag2", "value2"}},
+      std::vector<influx_client::tag>{
+          influx_client::tag{"tag1", "value1"},
+          influx_client::tag{"tag2", "value2"}},
       {{"field1", 0}, {"field2", 0}});
 
   ASSERT_TRUE(code == 204);
@@ -86,7 +108,9 @@ int main(int argc, char **argv) {
 
   code = client.write(a, tags, {{"field1", "value3"}}, 0, &q);
 
-  ASSERT_TRUE(code == 0  || code == 401);
+  ASSERT_TRUE(code == 0 || code == 401);
+
+  construct_test();
 
   return 0;
 }
