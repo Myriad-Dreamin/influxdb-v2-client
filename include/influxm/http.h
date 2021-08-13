@@ -44,6 +44,16 @@ influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
 namespace influx_client {
 namespace detail {
 
+influxdb_if_inline constexpr uint8_t bit_swap8(uint8_t n) {
+  return n & 0xff;
+}
+influxdb_if_inline constexpr uint16_t bit_swap16(uint16_t n) {
+  return bit_swap8(n) << 8 | bit_swap8(n >> 8);
+}
+influxdb_if_inline constexpr uint32_t bit_swap32(uint32_t n) {
+  return bit_swap16(n) << 16 | bit_swap16(n >> 16);
+}
+
 influxdb_if_inline int http_request_(
     int sock, string_view pref_header, string_view body, std::string *resp) {
   static const uint32_t rn = uint32_t('\r') << 8 | uint32_t('\n');
@@ -95,7 +105,8 @@ influxdb_if_inline int http_request_(
   }
 
   auto getOnce = [&] {
-    return (recv_res = influx_http_recv(sock, &buf[0], std::min(max_length, recv_rest), 0)) > 0;
+    return (recv_res = influx_http_recv(
+                sock, &buf[0], std::min(max_length, recv_rest), 0)) > 0;
   };
   while (status != target) {
     if (recv_res == 0 && !getOnce()) {
@@ -142,11 +153,11 @@ influxdb_if_inline int http_request_(
           pref = i;
           goto status3;
         case rn_co:
-          *(int32_t*)(&(*resp)[i-4]) = rn_co_pos;
+          *(int32_t *)(&(*resp)[i - 4]) = rn_co_pos;
           rn_co_pos = i;
           break;
         case rn_tr:
-          *(int32_t*)(&(*resp)[i-4]) = rn_tr_pos;
+          *(int32_t *)(&(*resp)[i - 4]) = rn_tr_pos;
           rn_tr_pos = i;
           break;
         default:
@@ -156,12 +167,11 @@ influxdb_if_inline int http_request_(
       recv_res = 0;
       break;
     case 3:
-    status3: {
-      const char* resp_addr = resp->c_str();
+    status3 : {
+      const char *resp_addr = resp->c_str();
       auto clearChain = [&resp_addr](int i, uint32_t val) {
-        val = htonl(val);
-        while(i) {
-          auto pos = (int32_t*)&resp_addr[i-4];
+        while (i) {
+          auto pos = (int32_t *)&resp_addr[i - 4];
           i = *pos;
           *pos = val;
         }
@@ -171,20 +181,20 @@ influxdb_if_inline int http_request_(
       } else {
         content_length = 0;
         i = rn_co_pos;
-        while(i) {
+        while (i) {
           if (macroConstStrCmpN(resp_addr + i, "ntent-Length: ") == 0) {
-            j = i + int(sizeof ("ntent-Length: ")) - 1;
-            while(isdigit(resp_addr[j])) {
+            j = i + int(sizeof("ntent-Length: ")) - 1;
+            while (isdigit(resp_addr[j])) {
               content_length = content_length * 10 + resp_addr[j++] - '0';
             }
           }
-          auto pos = (int32_t*)&resp_addr[i-4];
+          auto pos = (int32_t *)&resp_addr[i - 4];
           i = *pos;
         }
         i = rn_tr_pos;
-        while(i) {
+        while (i) {
           printf("%d\n", i);
-          auto pos = (int32_t*)&resp_addr[i-4];
+          auto pos = (int32_t *)&resp_addr[i - 4];
           i = *pos;
           abort();
         }
@@ -195,8 +205,8 @@ influxdb_if_inline int http_request_(
           status = 5;
         }
       }
-      clearChain(rn_co_pos, rn_co);
-      clearChain(rn_tr_pos, rn_tr);
+      clearChain(rn_co_pos, bit_swap32(rn_co));
+      clearChain(rn_tr_pos, bit_swap32(rn_tr));
       (*resp)[pref - 2] = 0;
       (*resp)[pref - 1] = 0;
       printf("%s\n", resp_addr);
