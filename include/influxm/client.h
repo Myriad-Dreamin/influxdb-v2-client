@@ -20,11 +20,12 @@ namespace influx_client {
 struct kv_t;
 using tag = kv_t;
 using field = kv_t;
+using point_vec = std::vector<influx_client::detail::string_view_t>;
 
 namespace detail {
 template <typename T, typename X = void>
 using is_influx_string_t = typename std::enable_if<
-    std::is_same<T, detail::string_view>::value ||
+    std::is_same<T, detail::string_view_ref>::value ||
         std::is_same<T, std::string>::value ||
         std::is_same<const char *, T>::value || std::is_same<char *, T>::value,
     X>::type;
@@ -44,13 +45,13 @@ struct kv_t {
   std::string v;
   bool q;
   template <typename T>
-  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_string_t, T))
+  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_string_t, T))
       : k(k), v(v), q(true) {}
   template <typename T>
-  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_boolean_t, T))
+  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_boolean_t, T))
       : k(k), v(v ? "true" : "false"), q(false) {}
   template <typename T>
-  kv_t(detail::string_view k, T v, macroPAssert(detail::is_influx_integer_t, T))
+  kv_t(detail::string_view_ref k, T v, macroPAssert(detail::is_influx_integer_t, T))
       : k(k), v(std::to_string(v)), q(false) {}
 };
 
@@ -68,8 +69,8 @@ struct Client {
   int port;
 
   Client(
-      detail::string_view host, int port, detail::string_view token,
-      detail::string_view org, detail::string_view bucket)
+      detail::string_view_ref host, int port, detail::string_view_ref token,
+      detail::string_view_ref org, detail::string_view_ref bucket)
       // detail::string_view precision = "ns"
       : host(host), port(port), token(token), organization(org), bucket(bucket),
         precision("ns") {
@@ -96,21 +97,21 @@ struct Client {
 
   template <typename T, typename F>
   int createPoint(
-      detail::string_view measurement, T tags_begin, T tags_end, F fields_begin,
+      detail::string_view_ref measurement, T tags_begin, T tags_end, F fields_begin,
       F fields_end, char *buf, int bufSize, timestamp_t t = 0);
 
-  int write(detail::string_view point, std::string *resp = nullptr);
+  int write(detail::string_view_ref point, std::string *resp = nullptr);
   template <typename T> int writes(T points, std::string *resp = nullptr);
   template <typename T> int writeIter(T pb, T pe, std::string *resp = nullptr);
 
   template <typename T, typename F>
   int writeIter(
-      detail::string_view measurement, T tb, T te, F fb, F fe,
+      detail::string_view_ref measurement, T tb, T te, F fb, F fe,
       timestamp_t t = 0, std::string *resp = nullptr);
 
 #define macroWriteImpl(T, F)                                                   \
   int write(                                                                   \
-      detail::string_view measurement, T tags, F fields, timestamp_t t = 0,    \
+      detail::string_view_ref measurement, T tags, F fields, timestamp_t t = 0,    \
       std::string *resp = nullptr) {                                           \
     return writeIter(                                                          \
         measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
@@ -125,7 +126,7 @@ struct Client {
 
 #define macroCratePointImpl(T, F)                                              \
   int createPoint(                                                             \
-      detail::string_view measurement, T tags, F fields, char *buf,            \
+      detail::string_view_ref measurement, T tags, F fields, char *buf,            \
       int bufSize, timestamp_t t = 0) {                                        \
     return createPoint(                                                        \
         measurement, tags.begin(), tags.end(), fields.begin(), fields.end(),   \
@@ -169,13 +170,13 @@ int putKVSeq(B &buf, int64_t &q, int64_t bufSize, T b, T e) {
 
 } // namespace detail
 
-int flux::Client::write(detail::string_view point, std::string *resp) {
+int flux::Client::write(detail::string_view_ref point, std::string *resp) {
   return detail::http_request(&addr, write_v2_header, point, resp);
 }
 
 template <typename T, typename F>
 int flux::Client::createPoint(
-    detail::string_view measurement, T tags_begin, T tags_end, F fields_begin,
+    detail::string_view_ref measurement, T tags_begin, T tags_end, F fields_begin,
     F fields_end, char *buf, int bufSize, flux::Client::timestamp_t t) {
   int64_t q = 0;
   int code;
@@ -214,7 +215,7 @@ template <typename T> int flux::Client::writes(T points, std::string *resp) {
 
 template <typename T, typename F>
 int flux::Client::writeIter(
-    detail::string_view measurement, T tb, T te, F fb, F fe, timestamp_t t,
+    detail::string_view_ref measurement, T tb, T te, F fb, F fe, timestamp_t t,
     std::string *resp) {
   macroAllocBuffer(buf, bufSize);
   int code = createPoint(measurement, tb, te, fb, fe, buf, bufSize, t);
@@ -222,7 +223,7 @@ int flux::Client::writeIter(
     return code;
   }
   code = detail::http_request(
-      &addr, write_v2_header, detail::to_string_view(buf, code), resp);
+      &addr, write_v2_header, detail::string_view_t(buf, code), resp);
   macroFreeBuffer(buf, bufSize);
   return code;
 }
@@ -235,17 +236,19 @@ int flux::Client::writeIter(T pb, T pe, std::string *resp) {
   }
   std::vector<iovec> Iov;
   Iov.resize(4);
+  Iov.reserve(7);
   int body_size = 0;
   for (auto p = pb; p != pe; p++) {
-    if (p.size() > 65535) {
+    if (p->size() > 65535) {
       return -1;
     }
     if (body_size) {
-      Iov.emplace_back("\n", 1);
+      Iov.emplace_back(iovec{(void *)"\n", 1});
       body_size++;
     }
-    Iov.emplace_back(static_cast<void *>(&(*p)[0]), p.size());
-    body_size += p.size();
+    Iov.emplace_back(iovec{
+        reinterpret_cast<void *>(const_cast<char *>(&(*p)[0])), p->size()});
+    body_size += p->size();
     if (body_size > 65535) {
       return -1;
     }

@@ -86,7 +86,7 @@ void example4() {
 
   influx_client::kv_t v_is_string{"k", "v"};
   influx_client::kv_t v_is_string2{"k", std::string("a")};
-  influx_client::kv_t v_is_string3{"k", std::string_view("v")};
+  influx_client::kv_t v_is_string3{"k", std::string_view_ref("v")};
 
   influx_client::kv_t v_is_bool{"k", true};
   influx_client::kv_t v_is_bool2{"k", false};

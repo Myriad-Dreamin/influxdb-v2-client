@@ -26,12 +26,14 @@ influxdb_if_inline uint64_t writev(int sock, struct iovec *iov, int cnt) {
 
 #else
 
+extern "C" {
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+}
 
 #define closesocket close
 #endif
@@ -47,9 +49,9 @@ influxdb_if_inline constexpr uint32_t bit_swap32(uint32_t n) {
   return bit_swap16(n) << 16 | bit_swap16(n >> 16);
 }
 
-static inline constexpr int http_iv_reserve = 4;
+static constexpr int http_iv_reserve = 4;
 influxdb_if_inline int http_request_v_(
-    int sock, string_view pref_header, struct iovec *iv, int iv_length, int body_size, std::string *resp) {
+    int sock, string_view_ref pref_header, struct iovec *iv, int iv_length, int body_size, std::string *resp) {
   static const uint32_t rn = uint32_t('\r') << 8 | uint32_t('\n');
   static const uint32_t rn_rn = rn << 16 | rn;
   static const uint32_t rn_co = rn << 16 | uint32_t('C') << 8 | uint32_t('o');
@@ -219,7 +221,7 @@ influxdb_if_inline int http_request_v_(
 }
 
 influxdb_if_inline int http_request_(
-    int sock, string_view pref_header, string_view body, std::string *resp) {
+    int sock, string_view_ref pref_header, string_view_ref body, std::string *resp) {
   struct iovec iv[1+http_iv_reserve]{};
   iv[4].iov_len = body.size();
   iv[4].iov_base = (void*)&body[0];
@@ -239,7 +241,8 @@ influxdb_if_inline int create_socket(const struct sockaddr_in *addr) {
 }
 
 influxdb_if_inline int http_request(
-    const struct sockaddr_in *addr, string_view pref_header, string_view body,
+    const struct sockaddr_in *addr, string_view_ref pref_header,
+    string_view_ref body,
     std::string *resp) {
   int sock = create_socket(addr);
   if (sock < 0) {

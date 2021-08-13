@@ -101,6 +101,27 @@ int main(int argc, char **argv) {
 
   ASSERT_TRUE(code == 204);
 
+  char points[4096];
+  influx_client::point_vec Vec;
+  int pointsSize = 4096, offset = 0;
+
+  code = client.createPoint("metrics_xx", tags, {{"field1", "value3"}}, points, pointsSize);
+  ASSERT_TRUE(code >= 0);
+  Vec.emplace_back(points+offset, code);
+  offset += code;
+
+  code = client.writes(Vec, &q);
+  ASSERT_TRUE(code == 204);
+
+  code = client.createPoint("metrics_xx", tags, {{"field1", "value3"}}, points+offset, pointsSize-offset);
+  ASSERT_TRUE(code >= 0);
+  Vec.emplace_back(points + offset, code);
+
+  code = client.writes(Vec, &q);
+  ASSERT_TRUE(code == 204);
+
+  construct_test();
+
   client.token = "123456";
   client.reset_network_data();
 
@@ -111,8 +132,6 @@ int main(int argc, char **argv) {
   code = client.write(a, tags, {{"field1", "value3"}}, 0, &q);
 
   ASSERT_TRUE(code == 0 || code == 401);
-
-  construct_test();
 
   return 0;
 }

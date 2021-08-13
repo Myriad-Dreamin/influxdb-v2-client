@@ -36,12 +36,12 @@
 namespace influx_client { // NOLINT(modernize-concat-nested-namespaces)
 namespace detail {
 #if __cplusplus < 201700L
-using string_view = const std::string &;
-using to_string_view = std::string;
+using string_view_ref = const std::string &;
+using string_view_t = std::string;
 #else
 #include <string_view>
-using string_view = std::string_view;
-using to_string_view = std::string_view;
+using string_view_ref = std::string_view;
+using string_view_t = std::string_view;
 #endif
 } // namespace detail
 } // namespace influx_client
